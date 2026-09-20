@@ -307,12 +307,15 @@ def preprocess_loss_inputs(
 
     bsz = logprobs.shape[0]
     proximal_logprobs = kwargs.get("proximal_logprobs", None)
+    rollout_logprobs = kwargs.get("rollout_logprobs", None)
     if logprob_type == "token_level":
         # logprobs, old_logprobs: [bsz, num_action_chunks, action_dim] -> [bsz, num_action_chunks, action_dim]
         logprobs = logprobs.reshape(bsz, -1, single_action_dim)
         old_logprobs = old_logprobs.reshape(bsz, -1, single_action_dim)
         if proximal_logprobs is not None:
             proximal_logprobs = proximal_logprobs.reshape(bsz, -1, single_action_dim)
+        if rollout_logprobs is not None:
+            rollout_logprobs = rollout_logprobs.reshape(bsz, -1, single_action_dim)
         if versions is not None:
             versions = versions.reshape(bsz, -1, single_action_dim)
         if kwargs.get("loss_type") == "opd":
@@ -335,6 +338,10 @@ def preprocess_loss_inputs(
             proximal_logprobs = proximal_logprobs.reshape(
                 bsz, -1, single_action_dim
             ).sum(dim=-1)
+        if rollout_logprobs is not None:
+            rollout_logprobs = rollout_logprobs.reshape(bsz, -1, single_action_dim).sum(
+                dim=-1
+            )
         if versions is not None:
             versions = versions.reshape(bsz, -1, single_action_dim)[..., 0]
 
@@ -346,6 +353,10 @@ def preprocess_loss_inputs(
             proximal_logprobs = proximal_logprobs.reshape(
                 bsz, -1, single_action_dim
             ).sum(dim=[1, 2])
+        if rollout_logprobs is not None:
+            rollout_logprobs = rollout_logprobs.reshape(bsz, -1, single_action_dim).sum(
+                dim=[1, 2]
+            )
         if versions is not None:
             versions = versions.reshape(bsz, -1, single_action_dim)[:, 0, 0]
 
@@ -363,6 +374,7 @@ def preprocess_loss_inputs(
             "logprobs": logprobs,
             "old_logprobs": old_logprobs,
             "proximal_logprobs": proximal_logprobs,
+            "rollout_logprobs": rollout_logprobs,
             "versions": versions,
             "advantages": advantages,
             "loss_mask": loss_mask,

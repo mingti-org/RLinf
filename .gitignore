@@ -22,3 +22,4 @@ rlinf/envs/sim/maniskill/assets
 PKG-INFO
 *.egg-info/
 .claude/settings.json
+evaluations/start.md

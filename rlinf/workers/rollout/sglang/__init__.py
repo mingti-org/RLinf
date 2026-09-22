@@ -12,26 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from importlib.metadata import PackageNotFoundError, version
-
+import sglang
 from packaging.version import parse
 
-
-def get_version(pkg):
-    try:
-        return parse(version(pkg))
-    except PackageNotFoundError:
-        return None
-
-
-package_name = "sglang"
-package_version = get_version(package_name)
+package_version = parse(sglang.__version__)
 
 sglang_version = None
 
 if package_version is None:
     raise ValueError("sglang is not installed.")
-elif package_version >= parse("0.4.4") and package_version <= parse("0.5.16"):
+elif package_version >= parse("0.4.4"):
     sglang_version = package_version
     from rlinf.hybrid_engines.sglang.common import io_struct
     from rlinf.hybrid_engines.sglang.common.sgl_engine import (

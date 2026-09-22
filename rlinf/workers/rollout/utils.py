@@ -315,7 +315,7 @@ class DisaggRankMapper(RankMapper):
         return (weight_dst_dp_rank_in_rollout, weight_dst_tp_rank_in_rollout)
 
 
-SUPPORTED_LLM_ROLLOUT_BACKENDS = ["vllm", "sglang"]
+SUPPORTED_LLM_ROLLOUT_BACKENDS = ["vllm", "sglang","phyai"]
 
 
 def get_rollout_backend_worker(cfg: DictConfig) -> Worker:
@@ -353,6 +353,21 @@ def get_rollout_backend_worker(cfg: DictConfig) -> Worker:
             return SGLangWorker
         else:
             raise ValueError(f"Unsupported sglang serving_mode: {serving_mode}.")
+    elif rollout_backend == "phyai":
+        serving_mode = cfg.rollout.sglang.get("serving_mode",None)
+        if serving_mode == "embodied":
+            from rlinf.workers.rollout.phyai.phyai_embodied_worker import(
+                PhyaiEmbodiedWorker
+            )
+            return PhyaiEmbodiedWorker
+        elif serving_mode is None:
+            from rlinf.workers.rollout.phyai.phyai_embodied_worker import(
+                            PhyaiEmbodiedWorker,
+            )
+            return PhyaiEmbodiedWorker
+        else :
+            raise ValueError(f"Unsupported phyai serving_mode: {serving_mode}.")
+
 
 
 class RunningStatusManager:

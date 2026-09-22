@@ -21,7 +21,7 @@ runner:
   logger:
     log_path: "../results"
     project_name: rlinf
-    experiment_name: "libero_spatial_eval_dreamzero_sglang"
+    experiment_name: "libero_spatial_eval_dreamzero_phyai"
     logger_backends: ["tensorboard"]
 
   max_epochs: 1

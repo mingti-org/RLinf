@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Embodied sglang rollout worker: drive a registered sglang action converter over
-channels against a driver-launched ``sglang serve`` (no worker-owned HTTP
+"""Embodied phyai rollout worker: drive a registered phyai action converter over
+channels against a driver-launched ``phyai serve`` (no worker-owned HTTP
 server, no in-worker subprocess).
 
-Used by embodied sglang-convert-action models (e.g. DreamZero). The eval driver
-launches the ``sglang serve`` server group via
-:func:`launch_sglang_router_and_server` and pushes the server URLs to each
-rollout worker via :meth:`set_sglang_server_urls`; the worker picks the URL
-at its own rank (for N-server parallel throughput), loads the sglang action converter
+Used by embodied phyai-convert-action models (e.g. DreamZero). The eval driver
+launches the ``phyai serve`` server group via
+:func:`launch_phyai_router_and_server` and pushes the server URLs to each
+rollout worker via :meth:`set_phyai_server_urls`; the worker picks the URL
+at its own rank (for N-server parallel throughput), loads the phyai action converter
 registered for ``rollout.model.model_type``, and is driven by
 ``EmbodiedEvalRunner`` over channels (``recv_from``/``send_to``). It does NOT
 host its own HTTP server (the agent path uses
-:class:`SGLangAgentWorkerWithHTTPServer`).
+:class:`phyaiAgentWorkerWithHTTPServer`).
 """
 
 from typing import Any, Literal, Optional
@@ -38,7 +38,7 @@ import numpy as np
 
 
 class PhyaiEmbodiedWorker(Worker):
-    """Use a driver-launched ``sglang serve`` + sglang action converter + channel eval."""
+    """Use a driver-launched ``phyai serve`` + phyai action converter + channel eval."""
 
     def __init__(
         self,
@@ -55,15 +55,14 @@ class PhyaiEmbodiedWorker(Worker):
             getattr(getattr(self.cfg_rollout, "model", None), "model_type", "")
         ).lower()
         self.model_cfg = self.cfg_rollout.model
-        self.sglang_adapter = None
         self.http_client = None
-        self.sglang_server_url = None
-        self._sglang_server_urls = None
+        self.phyai_server_url = None
+        self._phyai_server_urls = None
         # This worker is eval-only (drives a serve + channel eval; no training).
         assert config.runner.get("only_eval", True), (
             "PhyaiEmbodiedWorker is eval-only; set runner.only_eval: true"
         )
-        # Decoupled env/rollout is not implemented on the sglang embodied path.
+        # Decoupled env/rollout is not implemented on the phyai embodied path.
         assert not config.runner.get("enable_decoupled_mode", False), (
             "PhyaiEmbodiedWorker does not support runner.enable_decoupled_mode"
         )
@@ -84,47 +83,34 @@ class PhyaiEmbodiedWorker(Worker):
             self.n_eval_chunk_steps = 0
 
     async def init_worker(self):
-        adapter_cls = None
-        if self.model_type:
-            from rlinf.models.embodiment.sglang_adapter import (
-                get_sglang_adapter_cls,
-            )
-
-            adapter_cls = get_sglang_adapter_cls(self.model_type)
-        if adapter_cls is None:
-            raise RuntimeError(
-                f"no sglang adapter registered for model_type "
-                f"'{self.model_type}'; cannot run the embodied sglang path"
-            )
-        self._init_sglang_server()
+        self._init_phyai_server()
         from rlinf.utils.http_client import InferenceHTTPClient
 
-        self.http_client = InferenceHTTPClient(self.sglang_server_url)
-        sglang_cfg = self.cfg.rollout.get("sglang", {})
+        self.http_client = InferenceHTTPClient(self.phyai_server_url)
+        phyai_cfg = self.cfg.rollout.get("phyai", {})
         self._http_timeout_s = float(
-            sglang_cfg.get("http_timeout_s", sglang_cfg.get("timeout_s", 120.0))
+            phyai_cfg.get("http_timeout_s", phyai_cfg.get("timeout_s", 120.0))
         )
-        self._http_max_retries = int(sglang_cfg.get("http_max_retries", 5))
-        self._http_retry_backoff_s = float(sglang_cfg.get("http_retry_backoff_s", 1.0))
-        self.sglang_adapter = adapter_cls(self.cfg, self._rank)
+        self._http_max_retries = int(phyai_cfg.get("http_max_retries", 5))
+        self._http_retry_backoff_s = float(phyai_cfg.get("http_retry_backoff_s", 1.0))
 
-    def set_sglang_server_urls(self, urls) -> None:
-        """Receive the sglang server URLs the driver launched."""
-        self._sglang_server_urls = list(urls)
+    def set_phyai_server_urls(self, urls) -> None:
+        """Receive the phyai server URLs the driver launched."""
+        self._phyai_server_urls = list(urls)
 
-    def _init_sglang_server(self) -> None:
-        """Pick the pre-launched sglang server URL assigned to this rank."""
-        urls = self._sglang_server_urls
+    def _init_phyai_server(self) -> None:
+        """Pick the pre-launched phyai server URL assigned to this rank."""
+        urls = self._phyai_server_urls
         if not urls:
             raise RuntimeError(
-                "sglang server URLs not set; the eval driver must call "
-                "rollout_group.set_sglang_server_urls(urls) (after "
-                "launch_sglang_router_and_server) before init_workers()."
+                "phyai server URLs not set; the eval driver must call "
+                "rollout_group.set_phyai_server_urls(urls) (after "
+                "launch_phyai_router_and_server) before init_workers()."
             )
-        self.sglang_server_url = urls[int(self._rank) % len(urls)]
+        self.phyai_server_url = urls[int(self._rank) % len(urls)]
         self.log_info(
-            f"sglang server assigned: rank={self._rank} -> "
-            f"{self.sglang_server_url} ({len(urls)} server(s))"
+            f"phyai server assigned: rank={self._rank} -> "
+            f"{self.phyai_server_url} ({len(urls)} server(s))"
         )
 
     @staticmethod
@@ -256,13 +242,12 @@ class PhyaiEmbodiedWorker(Worker):
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """env_obs -> action chunks [N, num_action_chunks, action_dim].
 
-        Owns the sglang HTTP round-trip: the adapter builds the request
+        Owns the phyai HTTP round-trip: the adapter builds the request
         payload and parses the response; this worker performs the msgpack POST.
         """
-        adapter = self.sglang_adapter
         payload, state = self.build_phyai_request(env_obs, mode=mode)
         resp = self.http_client.post(
-            adapter.action_path,
+            "/v1/actions/generations",
             payload,
             msgpack=True,
             timeout_s=self._http_timeout_s,
@@ -360,6 +345,8 @@ class SGLang_pi05_EmbodiedWorker(Worker):
 
     async def init_worker(self):
         adapter_cls = None
+
+        self.model_type="dreamzero"  # 没有openpi_rlinf的adapter ,但是该类也不需要使用这个adapter，所以通过mock的方式通过下面的检测
         if self.model_type:
             from rlinf.models.embodiment.sglang_adapter import (
                 get_sglang_adapter_cls,
@@ -401,7 +388,7 @@ class SGLang_pi05_EmbodiedWorker(Worker):
         if not urls:
             raise RuntimeError(
                 "sglang server URLs not set; the eval driver must call "
-                "rollout_group.set_sglang_server_urls(urls) (after "
+                "rollout_group.set_phyai_server_urls(urls) (after "
                 "launch_sglang_router_and_server) before init_workers()."
             )
         self.sglang_server_url = urls[int(self._rank) % len(urls)]

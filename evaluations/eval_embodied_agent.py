@@ -92,7 +92,7 @@ def main(cfg) -> None:
     elif rollout_backend == "phyai":
         rollout_group = (
             get_embodied_rollout_worker(cfg)
-            .create_group(cfg)
+            .create_group(cfg,component_placement)
             .launch(
                 cluster,
                 name=cfg.rollout.group_name,
@@ -133,7 +133,7 @@ def main(cfg) -> None:
             f"[eval] using externa phyai server: {_server_url}"
         )
 
-        rollout_group.set_sglang_server_urls([_server_url]).wait()
+        rollout_group.set_phyai_server_urls([_server_url]).wait()
     runner = EmbodiedEvalRunner(
         cfg=cfg,
         rollout=rollout_group,

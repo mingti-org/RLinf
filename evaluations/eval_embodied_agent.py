@@ -125,6 +125,15 @@ def main(cfg) -> None:
         )
         rollout_group.set_sglang_server_urls(_server_urls).wait()
 
+    # Use an externally launched phyai server.
+    elif rollout_backend == "phyai":
+        _server_url = "http://127.0.0.1:30000"
+
+        get_logger().info(
+            f"[eval] using externa phyai server: {_server_url}"
+        )
+
+        rollout_group.set_sglang_server_urls([_server_url]).wait()
     runner = EmbodiedEvalRunner(
         cfg=cfg,
         rollout=rollout_group,

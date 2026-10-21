@@ -89,13 +89,22 @@ def main(cfg) -> None:
             cluster, name=cfg.rollout.group_name, placement_strategy=rollout_placement
         )
     elif rollout_backend == "phyai":
-        from rlinf.workers.rollout.phyai import PhyAIWorker
-
-        rollout_group = PhyAIWorker.create_group(cfg).launch(
-            cluster,
-            name=cfg.rollout.group_name,
-            placement_strategy=rollout_placement,
-        )
+        phyai_serving_mode = cfg.rollout.get("phyai",{}).get("serving_mode","embodied")
+        if phyai_serving_mode == "embodied":
+            from rlinf.workers.rollout.phyai import PhyAIWorker
+            rollout_group = PhyAIWorker.create_group(cfg)
+        elif phyai_serving_mode == "worker_http":
+            from rlinf.workers.rollout.phyai.phyai_embodied_worker import PhyaiEmbodiedWorker
+            rollout_group=PhyaiEmbodiedWorker.create_group(
+                cfg,component_placement
+            )
+        else:
+            raise ValueError(f"Unsupported phyai serving_mode: {phyai_serving_mode}.")
+        rollout_group = rollout_group.launch(
+              cluster,
+              name=cfg.rollout.group_name,
+              placement_strategy=rollout_placement,
+          )
     else:
         raise ValueError(f"Unsupported rollout backend: {rollout_backend}")
     # Create env worker group
@@ -122,6 +131,21 @@ def main(cfg) -> None:
         )
         rollout_group.set_sglang_server_urls(_server_urls).wait()
 
+    # Use an externally launched phyai server.
+    elif rollout_backend == "phyai" and phyai_serving_mode == "worker_http":
+        _server_url = cfg.rollout.phyai.get("gateway_url")
+
+        if not isinstance(_server_url,str) or not _server_url.strip():
+            raise ValueError(
+                "rollout.phyai.gateway_url must be a nonempty string "
+                 "when serving_mode='worker_http'."
+            )
+
+        get_logger().info(
+            f"[eval] using externa phyai server: {_server_url}"
+        )
+
+        rollout_group.set_phyai_server_urls([_server_url]).wait()
     runner = EmbodiedEvalRunner(
         cfg=cfg,
         rollout=rollout_group,

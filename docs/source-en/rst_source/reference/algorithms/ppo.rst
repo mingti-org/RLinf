@@ -102,6 +102,9 @@ The following first provides an example configuration for an embodied task:
 
       huber_delta: 10.0         # Delta parameter for Huber loss in value training
 
+Rollout and Actor Importance Sampling
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 When rollout generation and actor training use different inference implementations,
 their action log probabilities may differ even after synchronizing the same weights.
 Synchronous embodied PPO can replay the sampled transitions with the actor and apply

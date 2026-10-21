@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Embodied phyai rollout worker: drive a registered phyai action converter over
-channels against a driver-launched ``phyai serve`` (no worker-owned HTTP
-server, no in-worker subprocess).
+"""HTTP rollout worker for PhyAI Gateway-based embodied evaluation.
 
-Used by embodied phyai-convert-action models (e.g. DreamZero). The eval driver
-launches the ``phyai serve`` server group via
-:func:`launch_phyai_router_and_server` and pushes the server URLs to each
-rollout worker via :meth:`set_phyai_server_urls`; the worker picks the URL
-at its own rank (for N-server parallel throughput), loads the phyai action converter
-registered for ``rollout.model.model_type``, and is driven by
-``EmbodiedEvalRunner`` over channels (``recv_from``/``send_to``). It does NOT
-host its own HTTP server (the agent path uses
-:class:`phyaiAgentWorkerWithHTTPServer`).
+Receives batched environment observations through RLinf channels, sends
+MessagePack requests to the Gateway's /v1/actions/generations endpoint,
+and sends the returned action chunks back to the environment workers.
+
+The evaluation driver supplies Gateway URLs through set_phyai_server_urls
+before worker initialization. Each worker selects a URL based on its rank.
+This worker supports evaluation only and does not launch the Gateway or
+model servers, or load a local policy model.
 """
 
 from typing import Any, Literal, Optional
@@ -38,7 +35,7 @@ import numpy as np
 
 
 class PhyaiEmbodiedWorker(Worker):
-    """Use a driver-launched ``phyai serve`` + phyai action converter + channel eval."""
+    """Run channel-based embodied evaluation through a PhyAI Gateway."""
 
     def __init__(
         self,
@@ -95,11 +92,11 @@ class PhyaiEmbodiedWorker(Worker):
         self._http_retry_backoff_s = float(phyai_cfg.get("http_retry_backoff_s", 1.0))
 
     def set_phyai_server_urls(self, urls) -> None:
-        """Receive the phyai server URLs the driver launched."""
+        """Set Gateway HTTP URLs before worker initialization."""
         self._phyai_server_urls = list(urls)
 
     def _init_phyai_server(self) -> None:
-        """Pick the pre-launched phyai server URL assigned to this rank."""
+        """Select a configured Gateway HTTP URL based on the worker rank."""
         urls = self._phyai_server_urls
         if not urls:
             raise RuntimeError(
@@ -109,7 +106,7 @@ class PhyaiEmbodiedWorker(Worker):
             )
         self.phyai_server_url = urls[int(self._rank) % len(urls)]
         self.log_info(
-            f"phyai server assigned: rank={self._rank} -> "
+            f"phyai gateway assigned: rank={self._rank} -> "
             f"{self.phyai_server_url} ({len(urls)} server(s))"
         )
 
@@ -163,7 +160,6 @@ class PhyaiEmbodiedWorker(Worker):
         if torch.is_tensor(states):
             observation["states"]=states.to(dtype=torch.float32)
         else:
-            import numpy as np
             observation["states"]=np.asarray(states,dtype=np.float32)
 
         batch_size = self._infer_env_batch_size(observation)
@@ -238,10 +234,11 @@ class PhyaiEmbodiedWorker(Worker):
     def predict(
         self, env_obs: dict[str, Any], mode: Literal["train", "eval"] = "eval"
     ) -> tuple[torch.Tensor, dict[str, Any]]:
-        """env_obs -> action chunks [N, num_action_chunks, action_dim].
+        """Request action chunks from the PhyAI Gateway.
 
-        Owns the phyai HTTP round-trip: the adapter builds the request
-        payload and parses the response; this worker performs the msgpack POST.
+        Builds and sends a MessagePack request, then validates and returns
+        actions shaped [batch_size, requested_action_horizon, action_dim]
+        together with rollout information.
         """
         payload, state = self.build_phyai_request(env_obs, mode=mode)
         resp = self.http_client.post(

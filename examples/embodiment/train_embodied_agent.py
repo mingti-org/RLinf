@@ -25,7 +25,6 @@ from rlinf.scheduler import Cluster
 from rlinf.utils.placement import HybridComponentPlacement
 from rlinf.workers.env.env_worker import EnvWorker
 from rlinf.workers.reward import EmbodiedAPIRewardWorker, EmbodiedRewardWorker
-from rlinf.workers.rollout.utils import get_embodied_rollout_worker
 
 mp.set_start_method("spawn", force=True)
 
@@ -108,7 +107,24 @@ def main(cfg) -> None:
 
     # Create rollout worker group
     rollout_placement = component_placement.get_strategy("rollout")
-    rollout_worker_cls = get_embodied_rollout_worker(cfg)
+    if str(cfg.rollout.get("rollout_backend", "huggingface")).lower() == "phyai":
+        from rlinf.workers.rollout.phyai import PhyAIWorker
+
+        rollout_worker_cls = PhyAIWorker
+    elif str(cfg.rollout.get("rollout_backend", "huggingface")).lower() in {
+        "hf",
+        "huggingface",
+    }:
+        from rlinf.workers.rollout.hf.huggingface_worker import (
+            MultiStepRolloutWorker,
+        )
+
+        rollout_worker_cls = MultiStepRolloutWorker
+    else:
+        raise ValueError(
+            f"Unsupported rollout backend: {cfg.rollout.rollout_backend}. "
+            "Expected 'huggingface', 'hf', or 'phyai'."
+        )
     rollout_group = rollout_worker_cls.create_group(cfg).launch(
         cluster,
         name=cfg.rollout.group_name,

@@ -24,12 +24,7 @@ runner:
     experiment_name: "libero_spatial_eval_dreamzero_phyai"
     logger_backends: ["tensorboard"]
 
-  max_epochs: 1
   only_eval: True
-  val_check_interval: -1
-  save_interval: -1
-  resume_dir: null
-  ckpt_path: null
 
 env:
   group_name: "EnvGroup"
@@ -60,71 +55,23 @@ rollout:
 
   group_name: "RolloutGroup"
   rollout_backend: "phyai"
-  enable_offload: False
   pipeline_stage_num: 1
-  return_logprobs: false
-  sampling_params:
-    do_sample: false
-    max_new_tokens: 1
 
   phyai:
     serving_mode: "worker_http"
+    gateway_url: "http://127.0.0.1:30000"
     http_timeout_s: 600
     http_max_retries: 0
     http_retry_backoff_s: 1.0
-    seed: 1140
-    tensor_parallel_size: 1
-    pipeline_parallel_size: 1
-    launch_server: true
-    launch_router: false
-    server_type: embodied
-    group_name: SGLangServerGroup
-    router_group_name: SGLangRouterGroup
-    server:
-      model_path: ${rollout.model.model_path}
-      backend: sglang
-      pipeline_class_name: DreamZeroPipeline
-      tp_size: ${..tensor_parallel_size}
-      num_gpus: 1  # launcher/placement key: should be TP size * PP size * CFG degree * SP degree
-      attention_backend: FA  # FA or TORCH_SDPA
-      dit_cpu_offload: false
-      cfg_parallel_degree: 1
-      sp_degree: 1
-      pipeline_config:
-        cfg_scale: 5.0
-        default_num_inference_steps: 16
-        action_horizon: 16
-        num_frames: 33
-        synthetic_height: 160
-        synthetic_width: 320
-        tile_size_height: 34
-        tile_size_width: 34
-        tile_stride_height: 18
-        tile_stride_width: 16
-        tiled: false
-        dreamzero_compile_components: true
-        dreamzero_max_sessions: 128
-        dynamic_cache_schedule: false
 
   model:
     model_type: "openpi"
-    precision: bf16
-    model_path: /path/to/RLinf-DreamZero-WAN2.2-5B-LIBERO-SFT-Diffusers # https://huggingface.co/RLinf/RLinf-DreamZero-WAN2.2-5B-LIBERO-SFT-Diffusers
-    # Dataset-generated metadata.json for normalisation statistics.
-    # Generate with: python toolkits/lerobot/generate_dreamzero_metadata.py \
-    #   --preset libero_sim --dataset-root /path/to/libero --output-metadata /path/to/metadata.json
-    # Must be explicitly specified unless it exists at model_path/experiment_cfg/metadata.json.
-    metadata_json_path: ${rollout.model.model_path}/experiment_cfg/metadata.json
-
-    embodiment_tag: "libero_sim"
-
-    is_lora: False
     action_horizon: 16
     num_action_chunks: 16
     num_action_per_block: 16
     target_video_height: 160
     target_video_width: 320
-    openpi: 
+    openpi:
       config_name: "name"
       task: "1"
       num_steps: 1
